@@ -17,7 +17,15 @@ SKIP_PLUGINS = {
     "httponly", "html5", "script", "country", "ip", "title", "email",
     "meta-refresh", "open-graph-protocol", "x-frame-options",
     "x-xss-protection", "strict-transport-security", "content-security-policy",
+    "meta-author", "meta-generator", "meta-viewport", "meta-description",
+    "meta-keywords", "meta-robots", "meta-charset", "meta-language",
+    "passwordfield", "formfield", "frame", "iframe", "object",
+    "x-powered-by", "x-content-type-options", "referrer-policy",
+    "permissions-policy", "cache-control", "via",
 }
+
+# Any plugin whose name starts with these prefixes is also not a real tech
+SKIP_PREFIXES = ("meta-", "x-", "http-")
 
 def _strip_ansi(text):
     return re.sub(r'\x1b\[[0-9;]*m', '', text)
@@ -72,7 +80,9 @@ def _parse_summary_line(output):
         else:
             name = _clean_plugin_name(plugin)
             key  = name.lower()
-            if name and key not in SKIP_PLUGINS and key not in seen:
+            if (name and key not in SKIP_PLUGINS
+                    and not any(key.startswith(p) for p in SKIP_PREFIXES)
+                    and key not in seen):
                 seen.add(key)
                 result["techs"].append(name)
 
