@@ -1,9 +1,10 @@
 """
-report_generator.py — Recon CLI v1.0
+report_generator.py — Recon CLI v1.1
 Assembles all module results into a structured, color-coded terminal report.
-Includes target info, subdomains, ports, technologies, headers, vulnerability
-issues, scan timings, and an at-a-glance summary. When --output is used,
-ANSI color codes are stripped and the report is saved as clean plain text.
+Includes target info, subdomains, ports, technologies, headers, DNS records,
+SSL certificate info, vulnerability issues, scan timings, and an at-a-glance
+summary. When --output is used, ANSI color codes are stripped and the report
+is saved as clean plain text.
 """
 import re
 import os
@@ -37,7 +38,11 @@ def _strip_ansi(text):
     return re.sub(r'\x1b\[[0-9;]*m', '', text)
 
 def generate(domain, subdomains, ports, tech_data, headers, issues,
-             scan_start, timings, output_file=None):
+             scan_start, timings, output_file=None, dns_data=None, ssl_data=None, whois_data=None):
+
+    dns_data   = dns_data or {}
+    ssl_data   = ssl_data or {"subject": "", "issuer": "", "expires": "", "days_left": None, "expired": False, "sans": []}
+    whois_data = whois_data or {"registrar": "", "created": "", "expires": "", "updated": "", "nameservers": []}
 
     score, rating = risk_rating(issues)
     scan_end  = datetime.now()
@@ -55,7 +60,7 @@ def generate(domain, subdomains, ports, tech_data, headers, issues,
 
     # ── Header ──────────────────────────────────────────
     lines.append(Fore.CYAN + "═" * 50)
-    lines.append("  RECON CLI v1.0 — Reconnaissance Report")
+    lines.append("  RECON CLI v1.1 — Reconnaissance Report")
     lines.append("═" * 50 + Style.RESET_ALL)
     lines.append(f"  Target        : {Fore.WHITE}{domain}{Style.RESET_ALL}")
     lines.append(f"  Scan Started  : {scan_start.strftime('%Y-%m-%d %H:%M:%S')}")
@@ -71,6 +76,10 @@ def generate(domain, subdomains, ports, tech_data, headers, issues,
     lines.append(f"  Technologies      : {len(techs_all)}")
     lines.append(f"  Headers Present   : {len(headers.get('present', []))}")
     lines.append(f"  Headers Missing   : {len(headers.get('missing', []))}")
+    dns_total = sum(len(v) for v in dns_data.values())
+    lines.append(f"  DNS Records       : {dns_total}")
+    ssl_expiry = ssl_data.get("expires", "")
+    lines.append(f"  SSL Expiry        : {ssl_expiry if ssl_expiry else 'N/A'}")
     lines.append(f"  Security Issues   : {len(issues)}")
     lines.append(f"  Overall Risk      : {risk_color}{rating}{Style.RESET_ALL}")
 
@@ -127,6 +136,47 @@ def generate(domain, subdomains, ports, tech_data, headers, issues,
         lines.append(Fore.GREEN  + f"  [ok] {h}" + Style.RESET_ALL)
     for h in sorted(missing):
         lines.append(Fore.YELLOW + f"  [!]  {h}" + Style.RESET_ALL)
+
+    # ── DNS Records ──────────────────────────────────────
+    if dns_data:
+        dns_total = sum(len(v) for v in dns_data.values())
+        lines.append(_section(f"DNS Records  ({dns_total} found)"))
+        for rtype in ["A", "AAAA", "MX", "NS", "TXT", "CNAME"]:
+            for val in dns_data.get(rtype, []):
+                lines.append(f"  {Fore.WHITE}{rtype:<8}{Style.RESET_ALL} {val}")
+
+    # ── SSL Certificate ───────────────────────────────────
+    if ssl_data.get("expires"):
+        lines.append(_section("SSL Certificate"))
+        lines.append(f"  {'Subject':<14}: {ssl_data['subject']}")
+        lines.append(f"  {'Issuer':<14}: {ssl_data['issuer']}")
+
+        days = ssl_data.get("days_left")
+        if ssl_data.get("expired"):
+            expiry_str = Fore.RED + f"{ssl_data['expires']} (EXPIRED)" + Style.RESET_ALL
+        elif days is not None and days <= 30:
+            expiry_str = Fore.YELLOW + f"{ssl_data['expires']} ({days} days left)" + Style.RESET_ALL
+        else:
+            expiry_str = Fore.GREEN + f"{ssl_data['expires']} ({days} days left)" + Style.RESET_ALL
+
+        lines.append(f"  {'Expires':<14}: {expiry_str}")
+
+        if ssl_data.get("sans"):
+            lines.append(f"  {'SANs':<14}:")
+            for san in sorted(ssl_data["sans"]):
+                lines.append(f"    • {san}")
+
+    # ── WHOIS ─────────────────────────────────────────────
+    if any(whois_data.get(k) for k in ["registrar", "created", "expires"]):
+        lines.append(_section("WHOIS"))
+        if whois_data.get("registrar"): lines.append(f"  {'Registrar':<14}: {whois_data['registrar']}")
+        if whois_data.get("created"):   lines.append(f"  {'Created':<14}: {whois_data['created']}")
+        if whois_data.get("expires"):   lines.append(f"  {'Expires':<14}: {whois_data['expires']}")
+        if whois_data.get("updated"):   lines.append(f"  {'Last Updated':<14}: {whois_data['updated']}")
+        if whois_data.get("nameservers"):
+            lines.append(f"  {'Nameservers':<14}:")
+            for ns in whois_data["nameservers"]:
+                lines.append(f"    • {ns}")
 
     # ── Vulnerability Issues ─────────────────────────────
     lines.append(_section(f"Vulnerability Issues  ({len(issues)} found)"))

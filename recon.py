@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-recon.py — Recon CLI v1.0
+recon.py — Recon CLI v1.1
 Entry point. Parses arguments, orchestrates module execution.
 """
 import argparse
@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from colorama import init, Fore, Style
 from utils.banner import print_banner
 from utils.validator import validate_domain
-from modules import subdomain_scan, port_scan, tech_detect, header_check, vuln_check
+from modules import subdomain_scan, port_scan, tech_detect, header_check, vuln_check, dns_scan, ssl_scan, whois_scan
 from reports.report_generator import generate
 
 init(autoreset=True)
@@ -33,7 +33,7 @@ def parse_args():
 
     parser = argparse.ArgumentParser(
         prog="recon",
-        description="Recon CLI v1.0 — Automated Reconnaissance Framework",
+        description="Recon CLI v1.1 — Automated Reconnaissance Framework",
         formatter_class=formatter,
         epilog="""
 examples:
@@ -43,6 +43,9 @@ examples:
   recon example.com -p
   recon example.com -t
   recon example.com -head
+  recon example.com -dns
+  recon example.com -ssl
+  recon example.com -whois
   recon example.com -f -o report.txt
   recon example.com -f -o /home/user/reports/report.txt
   recon -targets targets.txt -f
@@ -80,6 +83,18 @@ repo: https://github.com/Frictionalfor/recon-cli
         action="store_true",
         help="HTTP security header analysis")
 
+    parser.add_argument("-dns", "--dns",
+        action="store_true",
+        help="DNS records lookup (A, AAAA, MX, NS, TXT, CNAME)")
+
+    parser.add_argument("-ssl", "--ssl",
+        action="store_true",
+        help="SSL/TLS certificate info (expiry, issuer, SANs)")
+
+    parser.add_argument("-whois", "--whois",
+        action="store_true",
+        help="WHOIS lookup (registrar, creation/expiry dates, nameservers)")
+
     parser.add_argument("-o", "--output",
         metavar="FILE",
         help="Save report to a plain text file (ANSI codes stripped)")
@@ -96,12 +111,15 @@ def scan(domain, args):
     print(f"  Started : {scan_start.strftime('%H:%M:%S')}")
     print(Fore.CYAN + f"{'='*50}\n" + Style.RESET_ALL)
 
-    run_all = args.full or not any([args.subdomains, args.ports, args.headers, args.tech])
+    run_all = args.full or not any([args.subdomains, args.ports, args.headers, args.tech, args.dns, args.ssl, args.whois])
 
     subdomains = []
     ports      = []
     tech_data  = {"techs": [], "status": "", "country": "", "ip": "", "title": "", "server": ""}
     headers    = {"present": [], "missing": []}
+    dns_data   = {}
+    ssl_data   = {"subject": "", "issuer": "", "expires": "", "days_left": None, "expired": False, "sans": []}
+    whois_data = {"registrar": "", "created": "", "expires": "", "updated": "", "nameservers": []}
 
     if run_all or args.subdomains:
         subdomains, t = subdomain_scan.run(domain)
@@ -119,16 +137,28 @@ def scan(domain, args):
         headers, t = header_check.run(domain)
         timings["Header Check"] = t
 
+    if run_all or args.dns:
+        dns_data, t = dns_scan.run(domain)
+        timings["DNS Records"] = t
+
+    if run_all or args.ssl:
+        ssl_data, t = ssl_scan.run(domain)
+        timings["SSL Certificate"] = t
+
+    if run_all or args.whois:
+        whois_data, t = whois_scan.run(domain)
+        timings["WHOIS Lookup"] = t
+
     issues, t = vuln_check.run(ports, headers.get("missing", []), tech_data.get("server", ""))
     timings["Vuln Analysis"] = t
 
     report = generate(domain, subdomains, ports, tech_data, headers, issues,
-                      scan_start, timings, args.output)
+                      scan_start, timings, args.output, dns_data, ssl_data, whois_data)
     print("\n" + report)
 
 def main():
-    args = parse_args()
     print_banner()
+    args = parse_args()
 
     targets = []
 
