@@ -46,8 +46,11 @@ examples:
   recon example.com -dns
   recon example.com -ssl
   recon example.com -whois
-  recon example.com -f -o report.txt
-  recon example.com -f -o /home/user/reports/report.txt
+  recon example.com -f -o report
+  recon example.com -f -o report -txt
+  recon example.com -f -o report -json
+  recon example.com -f -o report -json -txt
+  recon example.com -f -o /home/user/reports/report
   recon -targets targets.txt -f
 
 repo: https://github.com/Frictionalfor/recon-cli
@@ -97,7 +100,15 @@ repo: https://github.com/Frictionalfor/recon-cli
 
     parser.add_argument("-o", "--output",
         metavar="FILE",
-        help="Save report to a plain text file (ANSI codes stripped)")
+        help="Save report to file (default: .json, use -txt or -json to specify format)")
+
+    parser.add_argument("-json", "--json",
+        action="store_true",
+        help="Save output as JSON (default when -o is used)")
+
+    parser.add_argument("-txt", "--txt",
+        action="store_true",
+        help="Save output as plain text (use with -o)")
 
     return parser.parse_args()
 
@@ -123,37 +134,38 @@ def scan(domain, args):
 
     if run_all or args.subdomains:
         subdomains, t = subdomain_scan.run(domain)
-        timings["Subdomain Scan"] = t
+        timings["subdomain_scan"] = t
 
     if run_all or args.ports:
         ports, t = port_scan.run(domain)
-        timings["Port Scan"] = t
+        timings["port_scan"] = t
 
     if run_all or args.tech:
         tech_data, t = tech_detect.run(domain)
-        timings["Tech Detection"] = t
+        timings["tech_detection"] = t
 
     if run_all or args.headers:
         headers, t = header_check.run(domain)
-        timings["Header Check"] = t
+        timings["header_check"] = t
 
     if run_all or args.dns:
         dns_data, t = dns_scan.run(domain)
-        timings["DNS Records"] = t
+        timings["dns_records"] = t
 
     if run_all or args.ssl:
         ssl_data, t = ssl_scan.run(domain)
-        timings["SSL Certificate"] = t
+        timings["ssl_certificate"] = t
 
     if run_all or args.whois:
         whois_data, t = whois_scan.run(domain)
-        timings["WHOIS Lookup"] = t
+        timings["whois_lookup"] = t
 
     issues, t = vuln_check.run(ports, headers.get("missing", []), tech_data.get("server", ""))
-    timings["Vuln Analysis"] = t
+    timings["vuln_analysis"] = t
 
     report = generate(domain, subdomains, ports, tech_data, headers, issues,
-                      scan_start, timings, args.output, dns_data, ssl_data, whois_data)
+                      scan_start, timings, args.output, dns_data, ssl_data, whois_data,
+                      save_json=args.json, save_txt=args.txt)
     print("\n" + report)
 
 def main():

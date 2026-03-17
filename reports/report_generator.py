@@ -8,6 +8,7 @@ is saved as clean plain text.
 """
 import re
 import os
+import json
 from datetime import datetime
 from colorama import Fore, Style
 
@@ -16,11 +17,11 @@ LEVEL_COLOR = {"High": Fore.RED, "Medium": Fore.YELLOW, "Low": Fore.WHITE, "None
 LEVEL_ICON  = {"High": "[!!]", "Medium": "[!] ", "Low": "[i] ", "None": "[ok]"}
 
 # Ports that carry known risk — colored red in output
-RISKY_PORTS = {"21", "23", "25", "110", "143", "3306", "5432", "3389", "6379", "27017"}
-MEDIUM_PORTS = {"8080", "8443"}
+RISKY_PORTS  = {21, 23, 25, 110, 143, 3306, 5432, 3389, 6379, 27017}
+MEDIUM_PORTS = {8080, 8443}
 
 def risk_rating(issues):
-    score = sum(RISK_WEIGHT.get(i["level"], 0) for i in issues)
+    score = sum(RISK_WEIGHT.get(i["risk"], 0) for i in issues)
     if score == 0:  return score, "None"
     if score <= 3:  return score, "Low"
     if score <= 8:  return score, "Medium"
@@ -31,6 +32,13 @@ def _fmt_duration(seconds):
         return f"{seconds}s"
     return f"{seconds // 60}m {seconds % 60}s"
 
+# Normalize noisy nmap service names to clean protocol names
+SERVICE_MAP = {
+    "http-proxy": "http", "http-alt": "http", "https-alt": "https",
+    "ssl/http":   "https", "ssl/https": "https", "ssl":  "https",
+    "domain":     "dns",  "ms-wbt-server": "rdp",
+}
+
 def _section(title):
     return f"\n{Fore.CYAN}{'─' * 50}\n  {title}\n{'─' * 50}{Style.RESET_ALL}"
 
@@ -38,7 +46,8 @@ def _strip_ansi(text):
     return re.sub(r'\x1b\[[0-9;]*m', '', text)
 
 def generate(domain, subdomains, ports, tech_data, headers, issues,
-             scan_start, timings, output_file=None, dns_data=None, ssl_data=None, whois_data=None):
+             scan_start, timings, output_file=None, dns_data=None, ssl_data=None,
+             whois_data=None, save_json=False, save_txt=False):
 
     dns_data   = dns_data or {}
     ssl_data   = ssl_data or {"subject": "", "issuer": "", "expires": "", "days_left": None, "expired": False, "sans": []}
@@ -72,7 +81,7 @@ def generate(domain, subdomains, ports, tech_data, headers, issues,
     lines.append(_section("At-a-Glance Summary"))
     lines.append(f"  Subdomains Found  : {len(sorted_subs)}")
     lines.append(f"  Open Ports        : {len(sorted_ports)}")
-    techs_all = ([tech_data["server"]] if tech_data.get("server") else []) + tech_data.get("techs", [])
+    techs_all = ([{"name": tech_data["server"], "confidence": 1.0}] if tech_data.get("server") else []) + tech_data.get("techs", [])
     lines.append(f"  Technologies      : {len(techs_all)}")
     lines.append(f"  Headers Present   : {len(headers.get('present', []))}")
     lines.append(f"  Headers Missing   : {len(headers.get('missing', []))}")
@@ -106,7 +115,7 @@ def generate(domain, subdomains, ports, tech_data, headers, issues,
         lines.append(f"  {'─'*10:<12} {'─'*5:<8} {'─'*10}")
         for p in sorted_ports:
             port_str = f"{p['port']}/tcp"
-            pnum = str(p["port"])
+            pnum = p["port"]
             if pnum in RISKY_PORTS:
                 color = Fore.RED
             elif pnum in MEDIUM_PORTS:
@@ -123,8 +132,8 @@ def generate(domain, subdomains, ports, tech_data, headers, issues,
         lines.append(f"  {'Server':<14}: {tech_data['server']}")
     if tech_data.get("techs"):
         lines.append(f"  {'Detected':<14}:")
-        for t in sorted(tech_data["techs"]):
-            lines.append(f"    • {t}")
+        for t in sorted(tech_data["techs"], key=lambda x: x["name"]):
+            lines.append(f"    • {t['name']}")
     if not techs_all:
         lines.append("  None detected")
 
@@ -181,10 +190,10 @@ def generate(domain, subdomains, ports, tech_data, headers, issues,
     # ── Vulnerability Issues ─────────────────────────────
     lines.append(_section(f"Vulnerability Issues  ({len(issues)} found)"))
     if issues:
-        for i in sorted(issues, key=lambda x: RISK_WEIGHT.get(x["level"], 0), reverse=True):
-            color = LEVEL_COLOR.get(i["level"], Fore.WHITE)
-            icon  = LEVEL_ICON.get(i["level"], "")
-            lines.append(color + f"  {icon} [{i['level']:6}]  {i['issue']}" + Style.RESET_ALL)
+        for i in sorted(issues, key=lambda x: RISK_WEIGHT.get(x["risk"], 0), reverse=True):
+            color = LEVEL_COLOR.get(i["risk"], Fore.WHITE)
+            icon  = LEVEL_ICON.get(i["risk"], "")
+            lines.append(color + f"  {icon} [{i['risk']:6}]  {i['name']} — {i['description']}" + Style.RESET_ALL)
     else:
         lines.append(Fore.GREEN + "  [ok] No issues detected" + Style.RESET_ALL)
 
@@ -200,10 +209,86 @@ def generate(domain, subdomains, ports, tech_data, headers, issues,
     report = "\n".join(lines)
 
     if output_file:
-        abs_path = os.path.abspath(output_file)
-        plain = _strip_ansi(report)
-        with open(abs_path, "w") as f:
-            f.write(plain)
-        print(Fore.GREEN + f"\n[+] Report saved to: {abs_path}" + Style.RESET_ALL)
+        base = os.path.splitext(os.path.abspath(output_file))[0]
+
+        # Default to JSON if neither flag specified
+        do_json = save_json or (not save_json and not save_txt)
+        do_txt  = save_txt
+
+        if do_json:
+            json_path = base + ".json"
+            scan_id = f"recon_{scan_start.strftime('%Y%m%d_%H%M%S')}"
+            duration_seconds = (scan_end - scan_start).seconds
+            techs_all_list = ([{"name": tech_data["server"], "confidence": 1.0}] if tech_data.get("server") else []) + tech_data.get("techs", [])
+            structured_ports = [
+                {
+                    "port":     p["port"],
+                    "protocol": "tcp",
+                    "service":  SERVICE_MAP.get(p["service"].lower(), p["service"]),
+                }
+                for p in sorted_ports
+            ]
+            structured_subs = [
+                {
+                    "host": s,
+                    "type": s.split(".")[0] if "." in s else "root",
+                }
+                for s in sorted_subs
+            ]
+            issues_with_status = [
+                {**i, "status": "open"} for i in issues
+            ]
+            payload = {
+                "tool": {
+                    "name":    "Recon CLI",
+                    "version": "1.1",
+                },
+                "scan_id":         scan_id,
+                "target":          domain,
+                "target_protocol": "https",
+                "scan": {
+                    "start":            scan_start.strftime("%Y-%m-%d %H:%M:%S"),
+                    "end":              scan_end.strftime("%Y-%m-%d %H:%M:%S"),
+                    "duration":         duration,
+                    "duration_seconds": duration_seconds,
+                },
+                "risk": {
+                    "level": rating,
+                    "score": score,
+                },
+                "summary": {
+                    "total_subdomains":   len(sorted_subs),
+                    "total_ports":        len(sorted_ports),
+                    "total_technologies": len(techs_all_list),
+                    "headers_present":    len(headers.get("present", [])),
+                    "headers_missing":    len(headers.get("missing", [])),
+                    "total_issues":       len(issues),
+                },
+                "ip_info": {
+                    "ip":      tech_data.get("ip", ""),
+                    "country": tech_data.get("country", ""),
+                },
+                "subdomains":   structured_subs,
+                "ports":        structured_ports,
+                "technologies": techs_all_list,
+                "security_headers": {
+                    "present": headers.get("present", []),
+                    "missing": headers.get("missing", []),
+                },
+                "dns_records": dns_data,
+                "ssl":         ssl_data,
+                "whois":       whois_data,
+                "issues":      issues_with_status,
+                "timings":     {k: round(v, 2) for k, v in timings.items()},
+            }
+            with open(json_path, "w") as f:
+                json.dump(payload, f, indent=2, default=str)
+            print(Fore.GREEN + f"\n[+] JSON report saved to: {json_path}" + Style.RESET_ALL)
+
+        if do_txt:
+            txt_path = base + ".txt"
+            with open(txt_path, "w") as f:
+                f.write(_strip_ansi(report))
+            print(Fore.GREEN + f"[+] TXT report saved to:  {txt_path}" + Style.RESET_ALL)
 
     return report

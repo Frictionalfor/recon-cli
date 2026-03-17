@@ -7,7 +7,7 @@ def parse_ports(nmap_output: str) -> list:
         match = re.match(r'^(\d+)/tcp\s+open\s+(\S+)', line)
         if match:
             ports.append({
-                "port": match.group(1),
+                "port": int(match.group(1)),
                 "service": match.group(2)
             })
     return ports

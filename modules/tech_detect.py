@@ -73,7 +73,7 @@ def _parse_summary_line(output):
         title   = re.match(r'^Title\[([^\]]+)\]', plugin)
         server  = re.match(r'^HTTPServer\[([^\]]+)\]', plugin)
 
-        if country: result["country"] = country.group(1).split(",")[0].strip()
+        if country: result["country"] = country.group(1).split(",")[0].strip().title()
         elif ip:    result["ip"]      = ip.group(1)
         elif title: result["title"]   = title.group(1)
         elif server:result["server"]  = server.group(1)
@@ -84,7 +84,7 @@ def _parse_summary_line(output):
                     and not any(key.startswith(p) for p in SKIP_PREFIXES)
                     and key not in seen):
                 seen.add(key)
-                result["techs"].append(name)
+                result["techs"].append({"name": name, "confidence": 0.9})
 
     return result
 
