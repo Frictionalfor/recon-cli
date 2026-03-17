@@ -1,4 +1,4 @@
-# Recon CLI v1.0
+# Recon CLI v1.1
 
 Automated reconnaissance framework for security researchers and penetration testers.
 
