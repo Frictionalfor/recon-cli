@@ -13,13 +13,11 @@ from colorama import Fore, Style
 def _is_root():
     return os.geteuid() == 0
 
-def run(domain):
-    print(Fore.YELLOW + "[+] Running Port Scan..." + Style.RESET_ALL, end=" ", flush=True)
+def run(domain, silent=False):
+    if not silent:
+        print(Fore.YELLOW + "[+] Running Port Scan..." + Style.RESET_ALL, end=" ", flush=True)
     start = time.time()
-
-    # -sT = TCP connect scan (no root needed), -sV = version detection
     flags = ["-sV", "--open"] if _is_root() else ["-sT", "-sV", "--open"]
-
     try:
         proc = subprocess.Popen(
             ["nmap"] + flags + [domain],
@@ -34,11 +32,14 @@ def run(domain):
             sys.exit(0)
         ports = parse_ports(stdout)
         elapsed = time.time() - start
-        print(Fore.GREEN + f"{len(ports)} open ports found " + Fore.WHITE + f"({elapsed:.1f}s)" + Style.RESET_ALL)
+        if not silent:
+            print(Fore.GREEN + f"{len(ports)} open ports found " + Fore.WHITE + f"({elapsed:.1f}s)" + Style.RESET_ALL)
         return ports, elapsed
     except FileNotFoundError:
-        print(Fore.RED + "nmap not found. Run: pkg install nmap" + Style.RESET_ALL)
+        if not silent:
+            print(Fore.RED + "nmap not found. Run: pkg install nmap" + Style.RESET_ALL)
         return [], 0
     except subprocess.TimeoutExpired:
-        print(Fore.RED + "timed out." + Style.RESET_ALL)
+        if not silent:
+            print(Fore.RED + "timed out." + Style.RESET_ALL)
         return [], 0

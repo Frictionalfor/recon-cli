@@ -1,14 +1,17 @@
 import re
 
 def parse_ports(nmap_output: str) -> list:
-    """Extract open ports from nmap raw output."""
+    """Extract open ports from nmap raw output, including service version."""
     ports = []
     for line in nmap_output.splitlines():
-        match = re.match(r'^(\d+)/tcp\s+open\s+(\S+)', line)
+        match = re.match(r'^(\d+)/tcp\s+open\s+(\S+)\s*(.*)', line)
         if match:
+            service = match.group(2)
+            version = match.group(3).strip()
             ports.append({
-                "port": int(match.group(1)),
-                "service": match.group(2)
+                "port":    int(match.group(1)),
+                "service": service,
+                "version": version if version else "",
             })
     return ports
 

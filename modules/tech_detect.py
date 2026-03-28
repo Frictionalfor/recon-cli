@@ -88,8 +88,9 @@ def _parse_summary_line(output):
 
     return result
 
-def run(domain):
-    print(Fore.YELLOW + "[+] Detecting Technologies..." + Style.RESET_ALL, end=" ", flush=True)
+def run(domain, silent=False):
+    if not silent:
+        print(Fore.YELLOW + "[+] Detecting Technologies..." + Style.RESET_ALL, end=" ", flush=True)
     empty = {"techs": [], "status": "", "country": "", "ip": "", "title": "", "server": ""}
     start = time.time()
     try:
@@ -107,12 +108,15 @@ def run(domain):
         data = _parse_summary_line(stdout + stderr)
         elapsed = time.time() - start
         count = len(data["techs"]) + (1 if data["server"] else 0)
-        print(Fore.GREEN + f"{count} technologies detected "
-              + Fore.WHITE + f"({elapsed:.1f}s)" + Style.RESET_ALL)
+        if not silent:
+            print(Fore.GREEN + f"{count} technologies detected "
+                  + Fore.WHITE + f"({elapsed:.1f}s)" + Style.RESET_ALL)
         return data, elapsed
     except FileNotFoundError:
-        print(Fore.YELLOW + "whatweb not found — skipping tech detection." + Style.RESET_ALL)
+        if not silent:
+            print(Fore.YELLOW + "whatweb not found — skipping tech detection." + Style.RESET_ALL)
         return empty, 0
     except subprocess.TimeoutExpired:
-        print(Fore.RED + "timed out." + Style.RESET_ALL)
+        if not silent:
+            print(Fore.RED + "timed out." + Style.RESET_ALL)
         return empty, 0

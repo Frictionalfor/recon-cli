@@ -6,8 +6,9 @@ Extracts registrar, creation date, expiry date, last updated, and nameservers.
 import time
 from colorama import Fore, Style
 
-def run(domain):
-    print(Fore.YELLOW + "[+] Running WHOIS Lookup..." + Style.RESET_ALL, end=" ", flush=True)
+def run(domain, silent=False):
+    if not silent:
+        print(Fore.YELLOW + "[+] Running WHOIS Lookup..." + Style.RESET_ALL, end=" ", flush=True)
     start = time.time()
     empty = {"registrar": "", "created": "", "expires": "", "updated": "", "nameservers": []}
 
@@ -45,10 +46,12 @@ def run(domain):
             "nameservers": nameservers,
         }
 
-        print(Fore.GREEN + "done " + Fore.WHITE + f"({elapsed:.1f}s)" + Style.RESET_ALL)
+        if not silent:
+            print(Fore.GREEN + "done " + Fore.WHITE + f"({elapsed:.1f}s)" + Style.RESET_ALL)
         return result, elapsed
 
     except Exception as e:
         elapsed = time.time() - start
-        print(Fore.RED + f"failed ({elapsed:.1f}s)" + Style.RESET_ALL)
+        if not silent:
+            print(Fore.RED + f"failed ({elapsed:.1f}s)" + Style.RESET_ALL)
         return empty, elapsed

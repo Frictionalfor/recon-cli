@@ -1,4 +1,4 @@
-# Recon CLI v1.1
+# Recon CLI v1.2
 
 Automated reconnaissance framework for security researchers and penetration testers.
 
@@ -23,8 +23,6 @@ cd recon-cli
 sudo bash setup.sh
 ```
 
-Installs Python dependencies, system tools (`nmap`, `whatweb`, `subfinder`), and registers `recon` as a global command at `/usr/local/bin/recon`.
-
 ### Termux (Android — no root required)
 
 ```bash
@@ -33,23 +31,33 @@ cd recon-cli
 bash termux-setup.sh
 ```
 
-Installs Python dependencies, `nmap`, `subfinder` via `pkg`, and registers `recon` as a global command at `$PREFIX/bin/recon`.
+> Termux note: `whatweb` is unavailable so `-t` is skipped. Port scan runs in TCP connect mode (`-sT`) automatically. All other modules work fully.
 
-> Note: `whatweb` is not available on Termux — tech detection (`-t`) is skipped. All other modules work fully without root.
-
-### Verify environment (optional)
+### Verify environment
 
 ```bash
 bash check.sh
 ```
 
-Detects your environment (Linux or Termux) and checks all dependencies, auto-installing anything missing.
+Detects Linux or Termux and checks all dependencies, auto-installing anything missing.
 
-### Confirm install
+### Confirm
 
 ```bash
 recon --help
 ```
+
+> The tool will notify you on startup if a newer version is available on GitHub.
+
+---
+
+## Update
+
+```bash
+bash update.sh
+```
+
+Checks GitHub for the latest version, pulls changes, updates Python dependencies, and re-registers the `recon` command. Works on both Linux and Termux.
 
 ---
 
@@ -58,26 +66,18 @@ recon --help
 ### Linux
 
 ```bash
-# Remove the global command
 sudo rm /usr/local/bin/recon
-
-# Remove the cloned folder
 rm -rf /path/to/recon-cli
-
-# Remove Python packages (optional)
+rm -rf ~/.recon
 pip uninstall requests colorama dnspython python-whois
 ```
 
 ### Termux
 
 ```bash
-# Remove the global command
 rm $PREFIX/bin/recon
-
-# Remove the cloned folder
 rm -rf /path/to/recon-cli
-
-# Remove Python packages (optional)
+rm -rf ~/.recon
 pip uninstall requests colorama dnspython python-whois
 ```
 
@@ -95,21 +95,26 @@ If no scan flag is provided, full scan (`-f`) runs by default.
 
 ## Flags
 
-| Flag              | Description                                        |
-|-------------------|----------------------------------------------------|
-| `-f` / `--full`   | Run all reconnaissance modules                     |
-| `-sd`             | Subdomain enumeration (DNS bruteforce + subfinder) |
-| `-p`              | Port scanning via nmap                             |
-| `-t`              | Technology detection via WhatWeb (Linux only)      |
-| `-head`           | HTTP security header analysis                      |
-| `-dns`            | DNS records lookup (A, AAAA, MX, NS, TXT, CNAME)  |
-| `-ssl`            | SSL/TLS certificate info (expiry, issuer, SANs)    |
-| `-whois`          | WHOIS lookup (registrar, dates, nameservers)       |
-| `-o FILE`         | Save report to file (default format: JSON)         |
-| `-json`           | Save output as JSON (default when `-o` is used)    |
-| `-txt`            | Save output as plain text                          |
-| `-targets FILE`   | Scan multiple domains from a file (one per line)   |
-| `-h` / `--help`   | Show help menu                                     |
+| Flag                    | Description                                              |
+|-------------------------|----------------------------------------------------------|
+| `-f` / `--full`         | Run all reconnaissance modules                           |
+| `-sd`                   | Subdomain enumeration (DNS bruteforce + subfinder)       |
+| `-w FILE`               | Custom wordlist for subdomain bruteforce                 |
+| `-p`                    | Port scanning via nmap (version detection included)      |
+| `-t`                    | Technology detection via WhatWeb (Linux only)            |
+| `-head`                 | HTTP security header analysis (checks quality too)       |
+| `-dns`                  | DNS records lookup (A, AAAA, MX, NS, TXT, CNAME)        |
+| `-ssl`                  | SSL/TLS certificate info (expiry, issuer, SANs)          |
+| `-whois`                | WHOIS lookup (registrar, dates, nameservers)             |
+| `-o FILE`               | Save report to file (default format: JSON)               |
+| `-json`                 | Save output as JSON (default when `-o` is used)          |
+| `-txt`                  | Save output as plain text                                |
+| `--silent`              | Suppress progress lines — only print final report        |
+| `--rate-limit SECONDS`  | Delay between scans when using `-targets`                |
+| `--diff OLD NEW`        | Compare two JSON scan reports and show what changed      |
+| `--history`             | List all saved scans from `~/.recon/history/`            |
+| `-targets FILE`         | Scan multiple domains from a file (one per line)         |
+| `-h` / `--help`         | Show help menu                                           |
 
 ---
 
@@ -119,6 +124,7 @@ If no scan flag is provided, full scan (`-f`) runs by default.
 recon example.com
 recon example.com -f
 recon example.com -sd
+recon example.com -sd -w wordlist.txt
 recon example.com -p
 recon example.com -t
 recon example.com -head
@@ -128,8 +134,10 @@ recon example.com -whois
 recon example.com -f -o report
 recon example.com -f -o report -txt
 recon example.com -f -o report -json -txt
-recon example.com -f -o /home/user/reports/report
-recon -targets targets.txt -f
+recon example.com -f --silent
+recon -targets targets.txt -f --rate-limit 5
+recon --diff old.json new.json
+recon --history
 ```
 
 ---
@@ -147,29 +155,71 @@ Use `-o` with a base filename — extension is added automatically.
 
 ---
 
+## Scan History
+
+Every scan is automatically saved to `~/.recon/history/` as a JSON file — no `-o` flag needed.
+
+```
+~/.recon/history/
+  example.com_20260328_090332.json
+  example.com_20260328_091500.json
+```
+
+List all saved scans:
+
+```bash
+recon --history
+```
+
+Use `--diff` to compare any two history files:
+
+```bash
+recon --diff ~/.recon/history/example.com_20260328_090332.json \
+             ~/.recon/history/example.com_20260328_091500.json
+```
+
+---
+
+## Diff Output
+
+`--diff` compares two JSON reports and shows:
+
+- Risk level changes
+- New or removed subdomains
+- New or closed ports
+- New or resolved vulnerability issues
+- SSL expiry changes (warns if under 30 days)
+- Security header changes
+
+---
+
 ## JSON Report Structure
 
 ```json
 {
-  "tool":            { "name": "Recon CLI", "version": "1.1" },
-  "scan_id":         "recon_20260317_204142",
+  "tool":            { "name": "Recon CLI", "version": "1.2" },
+  "scan_id":         "recon_20260328_090332",
   "target":          "example.com",
   "target_protocol": "https",
   "scan": {
-    "start":            "2026-03-17 20:41:42",
-    "end":              "2026-03-17 20:44:01",
-    "duration":         "2m 19s",
-    "duration_seconds": 139
+    "start":            "2026-03-28 09:03:32",
+    "end":              "2026-03-28 09:03:37",
+    "duration":         "5s",
+    "duration_seconds": 5
   },
   "risk":    { "level": "Medium", "score": 7 },
   "summary": { "total_subdomains": 2, "total_ports": 2, "total_issues": 5 },
   "ip_info": { "ip": "76.76.21.21", "country": "United States" },
   "subdomains":   [{ "host": "www.example.com", "type": "www" }],
-  "ports":        [{ "port": 443, "protocol": "tcp", "service": "https" }],
+  "ports":        [{ "port": 443, "protocol": "tcp", "service": "https", "version": "nginx 1.24.0" }],
   "technologies": [{ "name": "Bootstrap", "confidence": 0.9 }],
-  "security_headers": { "present": [...], "missing": [...] },
-  "dns_records":  { "A": [...], "MX": [...], "TXT": [...] },
-  "ssl":   { "subject": "...", "issuer": "...", "expires": "2027-01-01", "sans": [...] },
+  "security_headers": {
+    "present": ["Strict-Transport-Security"],
+    "missing": ["Content-Security-Policy"],
+    "weak":    [{ "header": "X-XSS-Protection", "value": "0" }]
+  },
+  "dns_records":  { "A": ["76.76.21.21"], "MX": [...], "TXT": [...] },
+  "ssl":   { "subject": "...", "issuer": "...", "expires": "2027-01-01", "days_left": 278, "sans": [...] },
   "whois": { "registrar": "...", "created": "2020-01-01", "expires": "2027-01-01" },
   "issues": [
     {
@@ -204,20 +254,24 @@ recon-cli/
 ├── recon.py                  # Entry point
 ├── setup.sh                  # Linux (Kali/Debian) install
 ├── termux-setup.sh           # Termux (Android) install — no root needed
+├── update.sh                 # One-command updater (Linux + Termux)
 ├── check.sh                  # Verify + auto-install all dependencies
+├── version.txt               # Current version number
 ├── requirements.txt
+├── CHANGELOG.md              # Version history
 ├── modules/
-│   ├── subdomain_scan.py     # DNS bruteforce + subfinder/sublist3r
-│   ├── port_scan.py          # Nmap wrapper (auto -sT on non-root)
+│   ├── subdomain_scan.py     # DNS bruteforce (200+ words) + subfinder/sublist3r
+│   ├── port_scan.py          # Nmap wrapper — version detection, auto -sT on non-root
 │   ├── tech_detect.py        # WhatWeb wrapper (Linux only)
-│   ├── header_check.py       # HTTP security header analysis
+│   ├── header_check.py       # Header presence + quality fingerprinting
 │   ├── dns_scan.py           # DNS records lookup
 │   ├── ssl_scan.py           # SSL/TLS certificate info (stdlib)
 │   ├── whois_scan.py         # WHOIS lookup
-│   └── vuln_check.py         # Rule-based vulnerability analysis
+│   ├── vuln_check.py         # Rule-based vulnerability analysis
+│   └── diff.py               # JSON report diff engine
 ├── utils/
 │   ├── banner.py             # Terminal banner
-│   ├── parser.py             # Raw output parsers
+│   ├── parser.py             # Raw output parsers (port + version)
 │   └── validator.py          # Domain validation & sanitization
 └── reports/
     └── report_generator.py   # Terminal report + JSON/TXT output
@@ -227,16 +281,17 @@ recon-cli/
 
 ## Module Overview
 
-| Module            | External Tool  | Works on Termux |
-|-------------------|----------------|-----------------|
-| subdomain_scan    | subfinder      | yes             |
-| port_scan         | nmap           | yes (TCP mode)  |
-| tech_detect       | whatweb        | no              |
-| header_check      | none           | yes             |
-| dns_scan          | none           | yes             |
-| ssl_scan          | none           | yes             |
-| whois_scan        | none           | yes             |
-| vuln_check        | none           | yes             |
+| Module          | External Tool | Works on Termux |
+|-----------------|---------------|-----------------|
+| subdomain_scan  | subfinder     | yes             |
+| port_scan       | nmap          | yes (TCP mode)  |
+| tech_detect     | whatweb       | no              |
+| header_check    | none          | yes             |
+| dns_scan        | none          | yes             |
+| ssl_scan        | none          | yes             |
+| whois_scan      | none          | yes             |
+| vuln_check      | none          | yes             |
+| diff            | none          | yes             |
 
 ---
 
@@ -254,6 +309,7 @@ recon-cli/
 | Missing CSP               | Medium | 6.5            |
 | Missing X-Frame-Options   | Medium | 6.5            |
 | Missing HSTS              | Medium | 6.5            |
+| Weak header value         | Medium | 5.0            |
 | Missing X-Content-Type    | Low    | 3.5            |
 | Missing Referrer-Policy   | Low    | 3.5            |
 

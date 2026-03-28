@@ -46,21 +46,25 @@ def risk_rating(issues):
     if score <= 8:  return score, "Medium"
     return score, "High"
 
-def run(ports, missing_headers, server=""):
-    print(Fore.YELLOW + "[+] Vulnerability Analysis..." + Style.RESET_ALL, end=" ", flush=True)
+def run(ports, missing_headers, server="", weak_headers=None, silent=False):
+    if not silent:
+        print(Fore.YELLOW + "[+] Vulnerability Analysis..." + Style.RESET_ALL, end=" ", flush=True)
     start = time.time()
     issues = []
+    weak_headers = weak_headers or []
 
     for p in ports:
         port_num = int(p.get("port", 0))
         if port_num in PORT_RULES:
             risk, severity_score, itype, name, desc = PORT_RULES[port_num]
+            version = p.get("version", "")
+            full_desc = f"{desc} ({version})" if version else desc
             issues.append({
                 "type":           itype,
                 "name":           name,
                 "risk":           risk,
                 "severity_score": severity_score,
-                "description":    desc,
+                "description":    full_desc,
                 "source":         "port_scan",
             })
 
@@ -75,6 +79,18 @@ def run(ports, missing_headers, server=""):
                 "description":    desc,
                 "source":         "header_check",
             })
+
+    for w in weak_headers:
+        h = w.get("header", "")
+        val = w.get("value", "")
+        issues.append({
+            "type":           "Weak Header",
+            "name":           h,
+            "risk":           "Medium",
+            "severity_score": 5.0,
+            "description":    f"Weak {h} value: '{val}' — may not provide adequate protection",
+            "source":         "header_check",
+        })
 
     if server:
         for risky in RISKY_SERVERS:
@@ -91,5 +107,6 @@ def run(ports, missing_headers, server=""):
 
     elapsed = time.time() - start
     score, rating = risk_rating(issues)
-    print(Fore.GREEN + f"{len(issues)} issues found " + Fore.WHITE + f"({elapsed:.1f}s)" + Style.RESET_ALL)
+    if not silent:
+        print(Fore.GREEN + f"{len(issues)} issues found " + Fore.WHITE + f"({elapsed:.1f}s)" + Style.RESET_ALL)
     return issues, elapsed

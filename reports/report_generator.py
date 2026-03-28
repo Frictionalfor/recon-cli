@@ -1,10 +1,5 @@
 """
-report_generator.py — Recon CLI v1.1
-Assembles all module results into a structured, color-coded terminal report.
-Includes target info, subdomains, ports, technologies, headers, DNS records,
-SSL certificate info, vulnerability issues, scan timings, and an at-a-glance
-summary. When --output is used, ANSI color codes are stripped and the report
-is saved as clean plain text.
+report_generator.py — Recon CLI v1.2
 """
 import re
 import os
@@ -47,7 +42,7 @@ def _strip_ansi(text):
 
 def generate(domain, subdomains, ports, tech_data, headers, issues,
              scan_start, timings, output_file=None, dns_data=None, ssl_data=None,
-             whois_data=None, save_json=False, save_txt=False):
+             whois_data=None, save_json=False, save_txt=False, silent=False):
 
     dns_data   = dns_data or {}
     ssl_data   = ssl_data or {"subject": "", "issuer": "", "expires": "", "days_left": None, "expired": False, "sans": []}
@@ -69,7 +64,7 @@ def generate(domain, subdomains, ports, tech_data, headers, issues,
 
     # ── Header ──────────────────────────────────────────
     lines.append(Fore.CYAN + "═" * 50)
-    lines.append("  RECON CLI v1.1 — Reconnaissance Report")
+    lines.append("  RECON CLI v1.2 — Reconnaissance Report")
     lines.append("═" * 50 + Style.RESET_ALL)
     lines.append(f"  Target        : {Fore.WHITE}{domain}{Style.RESET_ALL}")
     lines.append(f"  Scan Started  : {scan_start.strftime('%Y-%m-%d %H:%M:%S')}")
@@ -111,18 +106,19 @@ def generate(domain, subdomains, ports, tech_data, headers, issues,
     # ── Open Ports — colored by risk ─────────────────────
     lines.append(_section(f"Open Ports  ({len(sorted_ports)} found)"))
     if sorted_ports:
-        lines.append(f"  {'PORT':<12} {'STATE':<8} SERVICE")
-        lines.append(f"  {'─'*10:<12} {'─'*5:<8} {'─'*10}")
+        lines.append(f"  {'PORT':<12} {'STATE':<8} {'SERVICE':<16} VERSION")
+        lines.append(f"  {'─'*10:<12} {'─'*5:<8} {'─'*14:<16} {'─'*10}")
         for p in sorted_ports:
             port_str = f"{p['port']}/tcp"
             pnum = p["port"]
+            version = p.get("version", "")
             if pnum in RISKY_PORTS:
                 color = Fore.RED
             elif pnum in MEDIUM_PORTS:
                 color = Fore.YELLOW
             else:
                 color = Fore.GREEN
-            lines.append(color + f"  {port_str:<12} {'open':<8} {p['service']}" + Style.RESET_ALL)
+            lines.append(color + f"  {port_str:<12} {'open':<8} {p['service']:<16} {version}" + Style.RESET_ALL)
     else:
         lines.append("  None found")
 
@@ -140,9 +136,12 @@ def generate(domain, subdomains, ports, tech_data, headers, issues,
     # ── Security Headers ─────────────────────────────────
     present = headers.get("present", [])
     missing = headers.get("missing", [])
-    lines.append(_section(f"Security Headers  ({len(present)} present, {len(missing)} missing)"))
+    weak    = headers.get("weak", [])
+    lines.append(_section(f"Security Headers  ({len(present)} present, {len(missing)} missing, {len(weak)} weak)"))
     for h in sorted(present):
         lines.append(Fore.GREEN  + f"  [ok] {h}" + Style.RESET_ALL)
+    for w in weak:
+        lines.append(Fore.YELLOW + f"  [~]  {w['header']} (weak value: {w['value'][:60]})" + Style.RESET_ALL)
     for h in sorted(missing):
         lines.append(Fore.YELLOW + f"  [!]  {h}" + Style.RESET_ALL)
 
@@ -225,6 +224,7 @@ def generate(domain, subdomains, ports, tech_data, headers, issues,
                     "port":     p["port"],
                     "protocol": "tcp",
                     "service":  SERVICE_MAP.get(p["service"].lower(), p["service"]),
+                    "version":  p.get("version", ""),
                 }
                 for p in sorted_ports
             ]
@@ -241,7 +241,7 @@ def generate(domain, subdomains, ports, tech_data, headers, issues,
             payload = {
                 "tool": {
                     "name":    "Recon CLI",
-                    "version": "1.1",
+                    "version": "1.2",
                 },
                 "scan_id":         scan_id,
                 "target":          domain,
@@ -274,6 +274,7 @@ def generate(domain, subdomains, ports, tech_data, headers, issues,
                 "security_headers": {
                     "present": headers.get("present", []),
                     "missing": headers.get("missing", []),
+                    "weak":    headers.get("weak", []),
                 },
                 "dns_records": dns_data,
                 "ssl":         ssl_data,

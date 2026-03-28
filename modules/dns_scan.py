@@ -9,12 +9,15 @@ from colorama import Fore, Style
 
 RECORD_TYPES = ["A", "AAAA", "MX", "NS", "TXT", "CNAME"]
 
-def run(domain):
-    print(Fore.YELLOW + "[+] Querying DNS Records..." + Style.RESET_ALL, end=" ", flush=True)
+def run(domain, silent=False):
+    if not silent:
+        print(Fore.YELLOW + "[+] Querying DNS Records..." + Style.RESET_ALL, end=" ", flush=True)
     start = time.time()
     records = {}
 
-    resolver = dns.resolver.Resolver()
+    resolver = dns.resolver.Resolver(configure=False)
+    # Termux has no /etc/resolv.conf — use public DNS directly
+    resolver.nameservers = ["8.8.8.8", "1.1.1.1", "8.8.4.4"]
     resolver.timeout = 3
     resolver.lifetime = 3
 
@@ -27,5 +30,6 @@ def run(domain):
 
     elapsed = time.time() - start
     total = sum(len(v) for v in records.values())
-    print(Fore.GREEN + f"{total} records found " + Fore.WHITE + f"({elapsed:.1f}s)" + Style.RESET_ALL)
+    if not silent:
+        print(Fore.GREEN + f"{total} records found " + Fore.WHITE + f"({elapsed:.1f}s)" + Style.RESET_ALL)
     return records, elapsed
