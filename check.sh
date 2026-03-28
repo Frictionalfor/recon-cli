@@ -128,11 +128,18 @@ check_tool() {
 
 check_tool nmap
 
-# whatweb — Kali only, skip on Termux
-if $IS_TERMUX; then
-    warn "whatweb not available on Termux — tech detection (-t) will be skipped"
+# whatweb — Kali: apt, Termux: ruby gem
+if command -v whatweb &>/dev/null; then
+    ok "whatweb"
 else
-    check_tool whatweb
+    if $IS_TERMUX; then
+        warn "whatweb not found — attempting install via Ruby gem..."
+        pkg install -y ruby && gem install whatweb \
+            && ok "whatweb installed" \
+            || warn "whatweb install failed — built-in HTTP fingerprinting will be used"
+    else
+        check_tool whatweb
+    fi
 fi
 
 # subfinder

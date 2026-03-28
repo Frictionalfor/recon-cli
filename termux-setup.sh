@@ -72,8 +72,15 @@ install_pkg() {
 install_pkg nmap
 install_pkg subfinder
 
-# whatweb is not in Termux repos — built-in HTTP fingerprinting is used instead
-info "Tech detection will use built-in HTTP fingerprinting (no whatweb needed)"
+# whatweb — install via Ruby gem
+if command -v whatweb &>/dev/null; then
+    ok "whatweb already installed"
+else
+    info "Installing Ruby for WhatWeb..."
+    pkg install -y ruby && gem install whatweb \
+        && ok "whatweb installed via gem" \
+        || warn "whatweb install failed — built-in HTTP fingerprinting will be used instead"
+fi
 
 # ── Python dependencies ──────────────────────────────────
 info "Installing Python dependencies..."
