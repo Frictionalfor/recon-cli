@@ -111,7 +111,7 @@ def run(domain):
               + Fore.WHITE + f"({elapsed:.1f}s)" + Style.RESET_ALL)
         return data, elapsed
     except FileNotFoundError:
-        print(Fore.RED + "whatweb not found. Install: sudo apt install whatweb" + Style.RESET_ALL)
+        print(Fore.YELLOW + "whatweb not found — skipping tech detection." + Style.RESET_ALL)
         return empty, 0
     except subprocess.TimeoutExpired:
         print(Fore.RED + "timed out." + Style.RESET_ALL)

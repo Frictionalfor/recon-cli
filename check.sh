@@ -2,7 +2,7 @@
 
 # check.sh — Recon CLI v1.1
 # Checks all required tools and Python dependencies.
-# Installs anything missing automatically.
+# Works on both Kali/Debian and Termux (Android).
 
 INSTALL_DIR="$(cd "$(dirname "$0")" && pwd)"
 PASS=0
@@ -19,30 +19,52 @@ warn() { echo -e "  ${YELLOW}[!] ${RESET}  $1"; }
 fail() { echo -e "  ${RED}[!!]${RESET}  $1"; ((FAIL++)); }
 info() { echo -e "  ${CYAN}[*] ${RESET}  $1"; }
 
+# ── Detect environment ───────────────────────────────────
+IS_TERMUX=false
+if [ -d "/data/data/com.termux" ]; then
+    IS_TERMUX=true
+    PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+fi
+
 echo ""
 echo "+======================================+"
 echo "|  Recon CLI v1.1 — Dependency Check   |"
 echo "+======================================+"
+if $IS_TERMUX; then
+    echo -e "  ${CYAN}Environment: Termux (Android)${RESET}"
+else
+    echo -e "  ${CYAN}Environment: Linux (Kali/Debian)${RESET}"
+fi
 echo ""
 
 # ── Python ───────────────────────────────────────────────
 echo -e "${CYAN}Python${RESET}"
 
-if command -v python3 &>/dev/null; then
-    VER=$(python3 --version 2>&1)
-    ok "python3 ($VER)"
+PYTHON=$(command -v python3 || command -v python)
+if [ -n "$PYTHON" ]; then
+    VER=$($PYTHON --version 2>&1)
+    ok "python ($VER)"
 else
-    fail "python3 not found"
-    info "Fix: sudo apt install python3"
+    fail "python not found"
+    if $IS_TERMUX; then
+        info "Fix: pkg install python"
+    else
+        info "Fix: sudo apt install python3"
+    fi
 fi
 
-if command -v pip3 &>/dev/null || command -v pip &>/dev/null; then
+PIP=$(command -v pip3 || command -v pip)
+if [ -n "$PIP" ]; then
     ok "pip"
 else
     fail "pip not found"
-    info "Fix: sudo apt install python3-pip"
-    info "Attempting install..."
-    sudo apt install -y python3-pip && ok "pip installed" || fail "pip install failed"
+    if $IS_TERMUX; then
+        info "Fix: pkg install python-pip"
+        pkg install -y python-pip && ok "pip installed" || fail "pip install failed"
+    else
+        info "Fix: sudo apt install python3-pip"
+        sudo apt install -y python3-pip && ok "pip installed" || fail "pip install failed"
+    fi
 fi
 
 echo ""
@@ -50,16 +72,20 @@ echo ""
 # ── Python packages ──────────────────────────────────────
 echo -e "${CYAN}Python Packages${RESET}"
 
-PIP=$(command -v pip3 || command -v pip)
+PYTHON_BIN=$(command -v python3 || command -v python)
 
 check_py_pkg() {
     local import_name=$1
     local pkg_name=${2:-$1}
-    if python3 -c "import $import_name" &>/dev/null; then
+    if $PYTHON_BIN -c "import $import_name" &>/dev/null; then
         ok "$pkg_name"
     else
         warn "$pkg_name not found — installing..."
-        $PIP install "$pkg_name" --break-system-packages && ok "$pkg_name installed" || fail "$pkg_name install failed"
+        if $IS_TERMUX; then
+            $PIP install "$pkg_name" && ok "$pkg_name installed" || fail "$pkg_name install failed"
+        else
+            $PIP install "$pkg_name" --break-system-packages && ok "$pkg_name installed" || fail "$pkg_name install failed"
+        fi
     fi
 }
 
@@ -80,38 +106,53 @@ check_tool() {
 
     if command -v "$cmd" &>/dev/null; then
         ok "$cmd"
+        return
+    fi
+
+    if [ "$optional" = "true" ]; then
+        warn "$cmd not found (optional) — attempting install..."
     else
-        if [ "$optional" = "true" ]; then
-            warn "$cmd not found (optional) — installing..."
-        else
-            warn "$cmd not found — installing..."
-        fi
+        warn "$cmd not found — attempting install..."
+    fi
+
+    if $IS_TERMUX; then
+        pkg install -y "$pkg" && ok "$cmd installed" || warn "$cmd install failed — feature may be limited"
+    else
         sudo apt install -y "$pkg" && ok "$cmd installed" || {
-            if [ "$optional" = "true" ]; then
-                warn "$cmd install failed — some features may be limited"
-            else
-                fail "$cmd install failed"
-            fi
+            [ "$optional" = "true" ] \
+                && warn "$cmd install failed — feature may be limited" \
+                || fail "$cmd install failed"
         }
     fi
 }
 
 check_tool nmap
-check_tool whatweb
 
-# subfinder — try apt first, fallback to go
+# whatweb — Kali only, skip on Termux
+if $IS_TERMUX; then
+    warn "whatweb not available on Termux — tech detection (-t) will be skipped"
+else
+    check_tool whatweb
+fi
+
+# subfinder
 if command -v subfinder &>/dev/null; then
     ok "subfinder"
 else
     warn "subfinder not found — attempting install..."
-    if sudo apt install -y subfinder &>/dev/null; then
-        ok "subfinder installed via apt"
-    elif command -v go &>/dev/null; then
-        go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest \
-            && ok "subfinder installed via go" \
-            || warn "subfinder install failed — subdomain scan will use DNS bruteforce only"
+    if $IS_TERMUX; then
+        pkg install -y subfinder && ok "subfinder installed" \
+            || warn "subfinder install failed — subdomain scan uses DNS bruteforce only"
     else
-        warn "subfinder install failed — subdomain scan will use DNS bruteforce only"
+        sudo apt install -y subfinder 2>/dev/null && ok "subfinder installed via apt" || {
+            if command -v go &>/dev/null; then
+                go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest \
+                    && ok "subfinder installed via go" \
+                    || warn "subfinder install failed — subdomain scan uses DNS bruteforce only"
+            else
+                warn "subfinder install failed — subdomain scan uses DNS bruteforce only"
+            fi
+        }
     fi
 fi
 
@@ -124,7 +165,11 @@ if command -v recon &>/dev/null; then
     ok "recon command found at $(command -v recon)"
 else
     warn "recon command not found in PATH"
-    info "Run bash setup.sh to install it"
+    if $IS_TERMUX; then
+        info "Run: bash termux-setup.sh"
+    else
+        info "Run: sudo bash setup.sh"
+    fi
 fi
 
 echo ""

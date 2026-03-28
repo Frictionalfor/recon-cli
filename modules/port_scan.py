@@ -1,21 +1,28 @@
 """
-port_scan.py — Recon CLI v1.0
-Calls nmap -sV --open via subprocess. -sV detects service versions on each open
-port. --open filters output to only show open ports. Raw nmap output is parsed
-with a regex in utils/parser.py to extract port number and service name.
+port_scan.py — Recon CLI v1.1
+Calls nmap via subprocess. Uses -sV --open for root/Kali.
+On Termux (non-root), falls back to -sT -sV --open (TCP connect scan).
 """
 import subprocess
 import time
 import sys
+import os
 from utils.parser import parse_ports
 from colorama import Fore, Style
+
+def _is_root():
+    return os.geteuid() == 0
 
 def run(domain):
     print(Fore.YELLOW + "[+] Running Port Scan..." + Style.RESET_ALL, end=" ", flush=True)
     start = time.time()
+
+    # -sT = TCP connect scan (no root needed), -sV = version detection
+    flags = ["-sV", "--open"] if _is_root() else ["-sT", "-sV", "--open"]
+
     try:
         proc = subprocess.Popen(
-            ["nmap", "-sV", "--open", domain],
+            ["nmap"] + flags + [domain],
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
         )
         try:
@@ -30,7 +37,7 @@ def run(domain):
         print(Fore.GREEN + f"{len(ports)} open ports found " + Fore.WHITE + f"({elapsed:.1f}s)" + Style.RESET_ALL)
         return ports, elapsed
     except FileNotFoundError:
-        print(Fore.RED + "nmap not found. Install: sudo apt install nmap" + Style.RESET_ALL)
+        print(Fore.RED + "nmap not found. Run: pkg install nmap" + Style.RESET_ALL)
         return [], 0
     except subprocess.TimeoutExpired:
         print(Fore.RED + "timed out." + Style.RESET_ALL)
