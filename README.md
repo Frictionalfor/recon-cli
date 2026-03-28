@@ -31,7 +31,7 @@ cd recon-cli
 bash termux-setup.sh
 ```
 
-> Termux note: `whatweb` is unavailable so `-t` is skipped. Port scan runs in TCP connect mode (`-sT`) automatically. All other modules work fully.
+> Termux note: Port scan runs in TCP connect mode (`-sT`) automatically since root is not available. All modules including tech detection work fully — `whatweb` is not needed as the tool uses built-in HTTP fingerprinting as a fallback.
 
 ### Verify environment
 
@@ -285,7 +285,7 @@ recon-cli/
 |-----------------|---------------|-----------------|
 | subdomain_scan  | subfinder     | yes             |
 | port_scan       | nmap          | yes (TCP mode)  |
-| tech_detect     | whatweb       | no              |
+| tech_detect     | whatweb (optional) | yes (built-in fallback) |
 | header_check    | none          | yes             |
 | dns_scan        | none          | yes             |
 | ssl_scan        | none          | yes             |

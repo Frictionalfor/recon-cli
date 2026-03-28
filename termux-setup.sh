@@ -72,12 +72,8 @@ install_pkg() {
 install_pkg nmap
 install_pkg subfinder
 
-# whatweb is not in Termux repos
-if command -v whatweb &>/dev/null; then
-    ok "whatweb found"
-else
-    warn "whatweb is not available on Termux — tech detection (-t) will be skipped"
-fi
+# whatweb is not in Termux repos — built-in HTTP fingerprinting is used instead
+info "Tech detection will use built-in HTTP fingerprinting (no whatweb needed)"
 
 # ── Python dependencies ──────────────────────────────────
 info "Installing Python dependencies..."
@@ -113,6 +109,6 @@ echo "    recon --help"
 echo ""
 echo -e "${YELLOW}Notes for Termux:${RESET}"
 echo "  • Port scan uses TCP connect mode (-sT) — no root needed"
-echo "  • Tech detection (-t) is unavailable — whatweb not in Termux repos"
-echo "  • All other modules (dns, ssl, whois, headers, subdomains) work fully"
+echo "  • Tech detection uses built-in HTTP fingerprinting — no whatweb needed"
+echo "  • All modules work fully without root"
 echo ""

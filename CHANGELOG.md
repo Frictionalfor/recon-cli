@@ -15,6 +15,7 @@ All notable changes to this project are documented here.
 - Auto-update system — `update.sh` checks GitHub for newer version and applies it with one command
 - Update notification — tool notifies on startup if a newer version is available on GitHub
 - Scan history — every scan auto-saved to `~/.recon/history/<domain>_<timestamp>.json`
+- Built-in HTTP fingerprinting fallback for tech detection — detects 50+ technologies from HTTP headers, HTML content, cookies, and JS paths. Works on Termux and anywhere WhatWeb is unavailable
 
 ### Improvements
 - Subdomain wordlist expanded from ~40 to 200+ entries
